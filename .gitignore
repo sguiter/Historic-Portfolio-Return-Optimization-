@@ -1,0 +1,95 @@
+# Install required libraries if necessary (use in Google Colab)
+# !pip install yfinance numpy pandas
+
+import yfinance as yf
+import numpy as np
+import pandas as pd
+
+def get_data(tickers):
+    """Fetch adjusted close prices for given tickers and return the data aligned with valid common dates."""
+    try:
+        data = yf.download(tickers)['Adj Close']
+        if isinstance(data, pd.Series):
+            data = pd.DataFrame(data)
+        return data
+    except Exception as e:
+        print(f"Error fetching data for tickers: {tickers}. Error: {str(e)}")
+        return pd.DataFrame()
+
+def calculate_annual_returns(daily_returns):
+    """Calculate the historical annual return of each stock."""
+    mean_daily_returns = daily_returns.mean()
+    annual_returns = mean_daily_returns * 252  # Assume 252 trading days in a year
+    return annual_returns
+
+def performance_weighted_portfolio(annual_returns):
+    """Assign weights to each stock based on its historical performance (with a max cap of 50%)."""
+    raw_weights = annual_returns / np.sum(annual_returns)  # Proportional to performance
+    
+    # Cap any individual stock weight at 50%
+    capped_weights = np.minimum(raw_weights, 0.50)
+    
+    # Re-normalize weights to ensure they sum to 1 after capping
+    capped_weights = capped_weights / np.sum(capped_weights)
+    
+    return capped_weights
+
+def calculate_metrics(returns, weights):
+    """Calculate simple portfolio returns and other metrics."""
+    portfolio_returns = returns.dot(weights)
+    annual_return = portfolio_returns.mean() * 252  # Assume 252 trading days in a year
+    return annual_return
+
+def main():
+    # Collect stocks from user
+    user_stocks = []
+    while True:
+        stock = input("Enter stock ticker (or type 'No' to stop): ").strip().upper()
+        if stock == 'NO':
+            break
+        if len(user_stocks) < 40:
+            user_stocks.append(stock)
+        else:
+            print("You have reached the limit of 40 stocks.")
+            break
+
+    if len(user_stocks) == 0:
+        print("No stocks were entered.")
+        return
+
+    # Fetch stock data without specifying start and end date
+    stock_data = get_data(user_stocks)
+    if stock_data.empty:
+        print("No valid data found for the given tickers.")
+        return
+
+    # Align data to ensure all tickers have data for the same dates
+    aligned_data = stock_data.dropna(axis=0, how='any')  # Drop any rows with missing data
+    
+    if aligned_data.empty:
+        print("No aligned data available after dropping missing values.")
+        return
+
+    # Calculate daily returns
+    daily_returns = aligned_data.pct_change().dropna()
+    if daily_returns.empty:
+        print("Insufficient data for returns calculation.")
+        return
+
+    # Calculate historical annual returns for each stock
+    annual_returns = calculate_annual_returns(daily_returns)
+    
+    # Generate performance-based weights (with a cap of 50%)
+    performance_weights = performance_weighted_portfolio(annual_returns)
+
+    # Calculate metrics for the portfolio
+    annual_portfolio_return = calculate_metrics(daily_returns, performance_weights)
+
+    print("Performance-Weighted Portfolio Results (with 50% cap):")
+    for ticker, weight in zip(user_stocks, performance_weights):
+        print(f"{ticker}: {weight:.4%}")
+    
+    print(f"Estimated Annual Portfolio Return: {annual_portfolio_return:.4f}")
+
+if __name__ == "__main__":
+    main()
